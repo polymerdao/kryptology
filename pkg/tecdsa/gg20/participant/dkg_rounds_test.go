@@ -8,10 +8,11 @@ package participant
 
 import (
 	"crypto/elliptic"
-	"github.com/coinbase/kryptology/pkg/core/curves"
-	"github.com/coinbase/kryptology/pkg/sharing/v1"
 	"math/big"
 	"testing"
+
+	"github.com/coinbase/kryptology/pkg/core/curves"
+	v1 "github.com/coinbase/kryptology/pkg/sharing/v1"
 
 	"github.com/btcsuite/btcd/btcec"
 	tt "github.com/coinbase/kryptology/internal"
@@ -907,15 +908,12 @@ func TestDkgFullRoundsWorks(t *testing.T) {
 	// Initiate 3 parties for DKG
 	dkgParticipants := make(map[uint32]*DkgParticipant, total)
 	for i := 1; i <= total; i++ {
-		dkgParticipants[uint32(i)] = &DkgParticipant{
-			Curve: curve,
-			id:    uint32(i),
-			Round: 1,
-			state: &dkgstate{
-				Threshold: uint32(threshold),
-				Limit:     uint32(total),
-			},
-		}
+		dkgParticipants[uint32(i)] = NewDkgParticipant(
+			curve,
+			uint32(i),
+			uint32(threshold),
+			uint32(total),
+		)
 	}
 
 	// Run Dkg Round 1

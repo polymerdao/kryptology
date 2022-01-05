@@ -9,16 +9,21 @@ package participant
 import (
 	"crypto/elliptic"
 	"fmt"
-	"github.com/coinbase/kryptology/pkg/core/curves"
-	"github.com/coinbase/kryptology/pkg/sharing/v1"
 	"math/big"
 	"reflect"
+
+	"github.com/coinbase/kryptology/pkg/core/curves"
+	v1 "github.com/coinbase/kryptology/pkg/sharing/v1"
 
 	"github.com/coinbase/kryptology/pkg/tecdsa/gg20/dealer"
 
 	"github.com/coinbase/kryptology/internal"
 	"github.com/coinbase/kryptology/pkg/core"
 	"github.com/coinbase/kryptology/pkg/paillier"
+)
+
+const (
+	firstRound = 1 // first round is always 1
 )
 
 // Participant is a tECDSA player that receives information from a trusted dealer
@@ -301,6 +306,25 @@ type DkgParticipant struct {
 	state *dkgstate
 	id    uint32
 	Round uint
+}
+
+// NewDkgParticipant creates a new dkg participant given some params.
+// TODO: Convert params -> options.
+func NewDkgParticipant(
+	curve elliptic.Curve,
+	id, // Participant ID
+	threshold, // Signature threshold
+	total uint32, // Total number of participants
+) *DkgParticipant {
+	return &DkgParticipant{
+		id: id,
+		state: &dkgstate{
+			Threshold: threshold,
+			Limit:     total,
+		},
+		Round: firstRound,
+		Curve: curve,
+	}
 }
 
 type dkgParticipantData struct {
