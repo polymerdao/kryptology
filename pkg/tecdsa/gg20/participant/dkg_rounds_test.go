@@ -9,6 +9,7 @@ package participant
 import (
 	"crypto/elliptic"
 	"math/big"
+	"sync"
 	"testing"
 
 	"github.com/coinbase/kryptology/pkg/core/curves"
@@ -903,7 +904,10 @@ func TestDkgFullRoundsWorks(t *testing.T) {
 	curve := btcec.S256()
 	total := 3
 	threshold := 2
-	var err error
+	var (
+		wg  sync.WaitGroup
+		err error
+	)
 
 	// Initiate 3 parties for DKG
 	dkgParticipants := make(map[uint32]*DkgParticipant, total)
@@ -919,17 +923,27 @@ func TestDkgFullRoundsWorks(t *testing.T) {
 	// Run Dkg Round 1
 	dkgR1Out := make(map[uint32]*DkgRound1Bcast, total)
 	for i := 1; i <= total; i++ {
-		dkgR1Out[uint32(i)], err = dkgParticipants[uint32(i)].DkgRound1(uint32(threshold), uint32(total))
-		require.NoError(t, err)
+		wg.Add(1)
+		go func(idx uint32) {
+			defer wg.Done()
+			dkgR1Out[idx], err = dkgParticipants[idx].DkgRound1(uint32(threshold), uint32(total))
+			require.NoError(t, err)
+		}(uint32(i))
 	}
+	wg.Wait()
 
 	// Run Dkg Round 2
 	dkgR2Bcast := make(map[uint32]*DkgRound2Bcast, total)
 	dkgR2P2PSend := make(map[uint32]map[uint32]*DkgRound2P2PSend, total)
 	for i := 1; i <= total; i++ {
-		dkgR2Bcast[uint32(i)], dkgR2P2PSend[uint32(i)], err = dkgParticipants[uint32(i)].DkgRound2(dkgR1Out)
-		require.NoError(t, err)
+		wg.Add(1)
+		go func(idx uint32) {
+			defer wg.Done()
+			dkgR2Bcast[idx], dkgR2P2PSend[idx], err = dkgParticipants[idx].DkgRound2(dkgR1Out)
+			require.NoError(t, err)
+		}(uint32(i))
 	}
+	wg.Wait()
 
 	// Run Dkg Round 3
 	decommitments := make(map[uint32]*core.Witness, total)
@@ -938,33 +952,36 @@ func TestDkgFullRoundsWorks(t *testing.T) {
 	decommitments[2] = dkgR2Bcast[2].Di
 	decommitments[3] = dkgR2Bcast[3].Di
 
-	dkgR3Out[1], err = dkgParticipants[1].DkgRound3(decommitments, map[uint32]*v1.ShamirShare{
-		1: dkgParticipants[1].state.X[0],
-		2: dkgParticipants[2].state.X[0],
-		3: dkgParticipants[3].state.X[0],
-	})
-	require.NoError(t, err)
-
-	dkgR3Out[2], err = dkgParticipants[2].DkgRound3(decommitments, map[uint32]*v1.ShamirShare{
-		1: dkgParticipants[1].state.X[1],
-		2: dkgParticipants[2].state.X[1],
-		3: dkgParticipants[3].state.X[1],
-	})
-	require.NoError(t, err)
-
-	dkgR3Out[3], err = dkgParticipants[3].DkgRound3(decommitments, map[uint32]*v1.ShamirShare{
-		1: dkgParticipants[1].state.X[2],
-		2: dkgParticipants[2].state.X[2],
-		3: dkgParticipants[3].state.X[2],
-	})
-	require.NoError(t, err)
+	for i := 1; i <= total; i++ {
+		wg.Add(1)
+		go func(idx uint32) {
+			defer wg.Done()
+			shares := make(map[uint32]*v1.ShamirShare)
+			for j := uint32(1); j <= uint32(total); j++ {
+				if j == idx {
+					// Use local share.
+					shares[idx] = dkgParticipants[idx].state.X[idx-1]
+					continue
+				}
+				shares[j] = dkgR2P2PSend[j][idx].Xij
+			}
+			dkgR3Out[idx], err = dkgParticipants[idx].DkgRound3(decommitments, shares)
+			require.NoError(t, err)
+		}(uint32(i))
+	}
+	wg.Wait()
 
 	// Run Dkg Round 4
 	dkgR4Out := make(map[uint32]*DkgResult, total)
 	for i := 1; i <= total; i++ {
-		dkgR4Out[uint32(i)], err = dkgParticipants[uint32(i)].DkgRound4(dkgR3Out)
-		require.NoError(t, err)
+		wg.Add(1)
+		go func(idx uint32) {
+			defer wg.Done()
+			dkgR4Out[idx], err = dkgParticipants[idx].DkgRound4(dkgR3Out)
+			require.NoError(t, err)
+		}(uint32(i))
 	}
+	wg.Wait()
 
 	// Check that the shares result in valid secret key and public key
 	field := curves.NewField(curve.Params().N)
